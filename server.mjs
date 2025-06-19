@@ -12,7 +12,12 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 /// new ///
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: 'https://ecom-front-gamma.vercel.app/signup',
+  origin: 'https://ecom-front-gamma.vercel.app/login',
+  origin: 'https://ecom-front-gamma.vercel.app',
+  credentials: true
+}));
 
 app.get("/", async (req, res) => {
   // res.send("Hello World");
