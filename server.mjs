@@ -7,15 +7,28 @@ import { customAlphabet } from 'nanoid';
 import jwt from 'jsonwebtoken';
 
 const app = express();
-const PORT = 5004;
 
 const SECRET = process.env.SECRET_TOKEN;
 
 app.use(express.json());
-// app.use(cors({
-//     origin: ["http://localhost/3000" , ""]
-// }))
-// app.use(cors());
+
+const allowedOrigins = [
+  'https://ecom-front-gamma.vercel.app/signup',
+  'https://ecom-front-gamma.vercel.app/login',
+  'https://ecom-front-gamma.vercel.app'
+];
+
+app.use(cors({
+  origin: function(origin, callback){
+    if(!origin) return callback(null, true);
+    if(allowedOrigins.indexOf(origin) === -1){
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true
+}));
 
 app.get('/' , async(req , res) => {
     try {
@@ -37,7 +50,6 @@ app.post('/sign-up' , async(req, res) => {
     let values = [reqBody.email]
     try {
         let result = await db.query(query , values)
-        // console.log(result);
         if(result.rows?.length){
             res.status(400).send({message: "User Already Exist With This Email"});
             return;
@@ -45,8 +57,6 @@ app.post('/sign-up' , async(req, res) => {
         let addQuery = `INSERT INTO users(first_name, last_name, email, password) VALUES ($1, $2, $3, $4)`
         const salt = bcrypt.genSaltSync(10);
         const hash = bcrypt.hashSync(reqBody.password, salt);
-        // console.log("salt" , salt, hash)
-        // const nanoid = customAlphabet('1234567890', 6)
         let addValues = [reqBody.firstName , reqBody.lastName, reqBody.email, hash]
         let addUser = await db.query(addQuery , addValues);
         res.status(201).send({message: "User Created"})
@@ -72,9 +82,7 @@ app.post('/login' , async(req , res) => {
             res.status(400).send({message: "User Doesn't exist with this Email"});
             return;
         }
-        // let user = result.rows[0]
-        // console.log("Result" , result.rows);
-        let isMatched = await bcrypt.compare(reqBody.password, result.rows[0].password); // true
+        let isMatched = await bcrypt.compare(reqBody.password, result.rows[0].password);
 
         if(!isMatched){
             res.status(401).send({message: "Password did not Matched"});
@@ -92,12 +100,11 @@ app.post('/login' , async(req , res) => {
         }, SECRET);
 
         res.cookie('Token', token, {
-            maxAge: 86400000, // 1 day
+            maxAge: 86400000,
             httpOnly: true,
             secure: true
         });
-        res.status(200)
-        res.send({message: "User Logged in" , user: {
+        res.status(200).send({message: "User Logged in" , user: {
             user_id: result.rows[0].user_id,
             first_name: result.rows[0].first_name,
             last_name: result.rows[0].last_name,
@@ -106,14 +113,11 @@ app.post('/login' , async(req , res) => {
             user_role: result.rows[0].user_role,
             profile: result.rows[0].profile,
         }})
-        // res.status(200).send({message: "Testing" , result: result.rows, isMatched})
-
     } catch (error) {
         console.log("Error", error)
         res.status(500).send({message: "Internal Server Error"})
     }
 })
 
-app.listen(PORT, () => {
-    console.log("Server is Running")
-})
+// Remove app.listen for Vercel serverless deployment
+export default app;
