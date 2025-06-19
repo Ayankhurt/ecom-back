@@ -7,14 +7,29 @@ import jwt from "jsonwebtoken";
 import { customAlphabet } from 'nanoid'
 
 const SECRET = process.env.SECRET_TOKEN;
-const PORT = process.env.PORT || 3000;
-
 const app = express();
-/// new ///
+
+const allowedOrigins = [
+  'https://ecom-front-gamma.vercel.app/signup',
+  'https://ecom-front-gamma.vercel.app/login',
+  'https://ecom-front-gamma.vercel.app'
+];
+
 app.use(express.json());
 
+app.use(cors({
+  origin: function(origin, callback){
+    if(!origin) return callback(null, true);
+    if(allowedOrigins.indexOf(origin) === -1){
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true
+}));
+
 app.get("/", async (req, res) => {
-  // res.send("Hello World");
   try {
     let result = await db.query("SELECT * FROM users");
     res.status(200).send({ message: "Data fetched successfully", data: result.rows });
@@ -45,11 +60,12 @@ app.post("/sign-up", async (req, res) => {
     const hash = bcrypt.hashSync(reqbody.password, salt);
     let addValues = [reqbody.firstName, reqbody.lastName, reqbody.email, hash];
     let addUser = await db.query(addQuery, addValues);
-    res.status(201).send({ message: "User created successfully", data: result.rows[0] });
+    res.status(201).send({ message: "User created successfully", data: addUser.rows[0] });
   } catch (error) {
     res.status(500).send({ message: "Error creating user", error: error.message });
   };
 })
+
 app.post('/login', async (req, res) => {
   let reqBody = req.body;
   if (!reqBody.email || !reqBody.password) {
@@ -80,16 +96,17 @@ app.post('/login', async (req, res) => {
       last_name: result.rows[0].last_name,
       email: result.rows[0].email,
       user_role: result.rows[0].user_role,
-      iat: Date.now() / 1000,
-      exp: (Date.now() / 1000) + (1000 * 60 * 60 * 24)
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24)
     }, SECRET);
+
     res.cookie('Token', token, {
       maxAge: 86400000,
       httpOnly: true,
-      secure: true
+      secure: process.env.NODE_ENV === 'production'
     });
-    res.status(200)
-    res.send({
+
+    res.status(200).send({
       message: "User Logged in", token, user: {
         user_id: result.rows[0].user_id,
         first_name: result.rows[0].first_name,
@@ -99,15 +116,13 @@ app.post('/login', async (req, res) => {
         user_role: result.rows[0].user_role,
         profile: result.rows[0].profile,
       }
-    })
-
+    });
 
   } catch (error) {
-    console.log("Error", error)
-    res.status(500).send({ message: "Internal Server Error" })
+    console.error("Login Error:", error.stack || error);
+    res.status(500).send({ message: "Internal Server Error", error: error.message });
   }
-})
-
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
 });
+
+// Export app for Vercel serverless deployment
+export default app;
