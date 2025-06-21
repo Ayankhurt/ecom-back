@@ -13,7 +13,9 @@ const PORT = 5004;
 const SECRET = process.env.SECRET_TOKEN;
 
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    origin: ["http://localhost:3000", "https://ecom-front-gamma.vercel.app"]
+}));
 // app.use(cors({
 //     origin: ["http://localhost/3000" , ""]
 // }))
