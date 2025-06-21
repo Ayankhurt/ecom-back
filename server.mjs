@@ -1,128 +1,135 @@
-import 'dotenv/config';
-import express from "express";
-import cors from "cors";
-import db from "./db.mjs";
+import 'dotenv/config'
+import express from 'express';
+import { db } from './db.mjs';
+import cors from 'cors';
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import { customAlphabet } from 'nanoid'
+import { customAlphabet } from 'nanoid';
+import jwt from 'jsonwebtoken';
+import path from 'path';
+
+const app = express();
+const PORT = 5004;
 
 const SECRET = process.env.SECRET_TOKEN;
-const app = express();
-
-const allowedOrigins = [
-  'https://ecom-front-gamma.vercel.app/signup',
-  'https://ecom-front-gamma.vercel.app/login',
-  'https://ecom-front-gamma.vercel.app'
-];
 
 app.use(express.json());
+app.use(cors());
+// app.use(cors({
+//     origin: ["http://localhost/3000" , ""]
+// }))
+// app.use(cors());
 
-app.use(cors({
-  origin: function(origin, callback){
-    if(!origin) return callback(null, true);
-    if(allowedOrigins.indexOf(origin) === -1){
-      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-      return callback(new Error(msg), false);
+// app.get('/' , async(req , res) => {
+//     try {
+//         let result = await db.query('SELECT * FROM users')
+//         res.status(200).send({message: "Success" , data: result.rows, result: result})
+//     } catch (error) {
+//         res.status(500).send({message: "Internal Server Error"})
+//     }
+// });
+
+app.post('/sign-up' , async(req, res) => {
+    let reqBody = req.body;
+    if(!reqBody.firstName || !reqBody.lastName || !reqBody.email || !reqBody.password){
+        res.status(400).send({message: "required parameter missing"})
+        return;
     }
-    return callback(null, true);
-  },
-  credentials: true
-}));
-
-app.get("/", async (req, res) => {
-  try {
-    let result = await db.query("SELECT * FROM users");
-    res.status(200).send({ message: "Data fetched successfully", data: result.rows });
-  } catch (error) {
-    res.status(500).send({ message: "Error fetching data", error: error.message });
-  }
-});
-
-app.post("/sign-up", async (req, res) => {
-  let reqbody = req.body;
-  if (!reqbody.firstName || !reqbody.lastName || !reqbody.email || !reqbody.password) {
-    res.status(400).send({ message: "All fields are required" });
-    return;
-  }
-
-  reqbody.email = reqbody.email.toLowerCase();
-  let query = `SELECT * FROM users WHERE email = $1`;
-  let values = [reqbody.email];
-
-  try {
-    let result = await db.query(query, values);
-    if (result.rows?.length) {
-      res.status(400).send({ message: "Email already exists" });
-      return;
+    reqBody.email = reqBody.email.toLowerCase();
+    let query = `SELECT * FROM users WHERE email = $1`
+    let values = [reqBody.email]
+    try {
+        let result = await db.query(query , values)
+        // console.log(result);
+        if(result.rows?.length){
+            res.status(400).send({message: "User Already Exist With This Email"});
+            return;
+        }
+        let addQuery = `INSERT INTO users(first_name, last_name, email, password) VALUES ($1, $2, $3, $4)`
+        const salt = bcrypt.genSaltSync(10);
+        const hash = bcrypt.hashSync(reqBody.password, salt);
+        // console.log("salt" , salt, hash)
+        // const nanoid = customAlphabet('1234567890', 6)
+        let addValues = [reqBody.firstName , reqBody.lastName, reqBody.email, hash]
+        let addUser = await db.query(addQuery , addValues);
+        res.status(201).send({message: "User Created"})
+    } catch (error) {
+        console.log("ERROR" , error);
+        res.status(500).send({message: "Internal Server Error"})
     }
-    let addQuery = `INSERT INTO users (first_name, last_name, email, password) VALUES ($1, $2, $3, $4) RETURNING *`;
-    const salt = bcrypt.genSaltSync(10);
-    const hash = bcrypt.hashSync(reqbody.password, salt);
-    let addValues = [reqbody.firstName, reqbody.lastName, reqbody.email, hash];
-    let addUser = await db.query(addQuery, addValues);
-    res.status(201).send({ message: "User created successfully", data: addUser.rows[0] });
-  } catch (error) {
-    res.status(500).send({ message: "Error creating user", error: error.message });
-  };
 })
 
-app.post('/login', async (req, res) => {
-  let reqBody = req.body;
-  if (!reqBody.email || !reqBody.password) {
-    res.status(400).send({ message: "Required Parameter Missing" })
-    return;
-  }
-  reqBody.email = reqBody.email.toLowerCase();
-  let query = `SELECT * FROM users WHERE email = $1`;
-  let values = [reqBody.email];
-
-  try {
-    let result = await db.query(query, values);
-    if (!result.rows.length) {
-      res.status(400).send({ message: "User Doesn't exist with this Email" });
-      return;
+app.post('/login' , async(req , res) => {
+    let reqBody = req.body;
+    if(!reqBody.email || !reqBody.password){
+        res.status(400).send({message: "Required Parameter Missing"})
+        return;
     }
+    reqBody.email = reqBody.email.toLowerCase();
+    let query = `SELECT * FROM users WHERE email = $1`;
+    let values = [reqBody.email];
 
-    let isMatched = await bcrypt.compare(reqBody.password, result.rows[0].password); // true
+    try {
+        let result = await db.query(query, values);
+        if(!result.rows.length){
+            res.status(400).send({message: "User Doesn't exist with this Email"});
+            return;
+        }
+        // let user = result.rows[0]
+        // console.log("Result" , result.rows);
+        let isMatched = await bcrypt.compare(reqBody.password, result.rows[0].password); // true
 
-    if (!isMatched) {
-      res.status(401).send({ message: "Password did not Matched" });
-      return;
+        if(!isMatched){
+            res.status(401).send({message: "Password did not Matched"});
+            return;
+        }
+
+        let token = jwt.sign({
+            id: result.rows[0].user_id,
+            firstName: result.rows[0].first_name,
+            last_name: result.rows[0].last_name,
+            email: result.rows[0].email,
+            user_role: result.rows[0].user_role,
+            iat: Date.now() / 1000,
+            exp: (Date.now() / 1000) + (1000*60*60*24)
+        }, SECRET);
+
+        res.cookie('Token', token, {
+            maxAge: 86400000, // 1 day
+            httpOnly: true,
+            secure: true
+        });
+        res.status(200)
+        res.send({message: "User Logged in" , user: {
+            user_id: result.rows[0].user_id,
+            first_name: result.rows[0].first_name,
+            last_name: result.rows[0].last_name,
+            email: result.rows[0].email,
+            phone: result.rows[0].phone,
+            user_role: result.rows[0].user_role,
+            profile: result.rows[0].profile,
+        }})
+        // res.status(200).send({message: "Testing" , result: result.rows, isMatched})
+
+    } catch (error) {
+        console.log("Error", error)
+        res.status(500).send({message: "Internal Server Error"})
     }
+})
 
-    let token = jwt.sign({
-      id: result.rows[0].user_id,
-      firstName: result.rows[0].first_name,
-      last_name: result.rows[0].last_name,
-      email: result.rows[0].email,
-      user_role: result.rows[0].user_role,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24)
-    }, SECRET);
+app.get('/products', async(req , res) => {
+    try {
+        let result = await db.query(`SELECT * FROM products`);
+        res.status(200).send({message: "Product Found" , products: result.rows})
+    } catch (error) {
+        
+    }
+})
 
-    res.cookie('Token', token, {
-      maxAge: 86400000,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production'
-    });
+const __dirname = path.resolve();//'D:\Shariq Siddiqui\saylani-batch12\react-with-server\6.complete-ecom/web/build'
+// const fileLocation = path.join(__dirname, './web/build')
+app.use('/', express.static(path.join(__dirname, './web/build')))
+app.use("/*splat" , express.static(path.join(__dirname, './web/build')))
 
-    res.status(200).send({
-      message: "User Logged in", token, user: {
-        user_id: result.rows[0].user_id,
-        first_name: result.rows[0].first_name,
-        last_name: result.rows[0].last_name,
-        email: result.rows[0].email,
-        phone: result.rows[0].phone,
-        user_role: result.rows[0].user_role,
-        profile: result.rows[0].profile,
-      }
-    });
-
-  } catch (error) {
-    console.error("Login Error:", error.stack || error);
-    res.status(500).send({ message: "Internal Server Error", error: error.message });
-  }
-});
-
-// Export app for Vercel serverless deployment
-export default app;
+app.listen(PORT, () => {
+    console.log("Server is Running")
+})
