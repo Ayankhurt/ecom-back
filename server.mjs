@@ -14,7 +14,8 @@ const SECRET = process.env.SECRET_TOKEN;
 
 app.use(express.json());
 app.use(cors({
-    origin: ["http://localhost:3000", "https://ecom-front-gamma.vercel.app"]
+    origin: ["http://localhost:3000", "https://ecom-front-gamma.vercel.app/login", "https://ecom-front-gamma.vercel.app/sign-up", "https://ecom-front-gamma.vercel.app/"],
+    credentials: true, // Allow cookies to be sent with requests
 }));
 // app.use(cors({
 //     origin: ["http://localhost/3000" , ""]
